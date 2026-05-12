@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-EMODnet Physics – Interaction Statistics Dashboard
-Streamlit app for exploring Matomo web analytics + platform metadata.
+EMODnet Physics – Statistics Dashboard
+
 """
 
-import io
 from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
 import pandas as pd
-import requests
 import streamlit as st
 
 # ─────────────────────────────────────────────────────────────
@@ -19,24 +17,35 @@ st.set_page_config(
     page_title="EMODnet Physics · Stats Dashboard",
     page_icon="🌊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ─────────────────────────────────────────────────────────────
-# CUSTOM CSS
+# CUSTOM CSS  – white background, hide sidebar toggle
 # ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
+html, body, [class*="css"],
+.stApp,
+div[data-testid="stAppViewContainer"],
+div[data-testid="stMain"],
+div[data-testid="block-container"],
+section[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    font-family: 'DM Sans', sans-serif;
+}
 
-/* Header */
+/* Hide the sidebar collapse arrow */
+button[data-testid="collapsedControl"] { display: none !important; }
+
+/* Header banner */
 .dash-header {
     background: linear-gradient(135deg, #003d6b 0%, #005f9e 60%, #0080c8 100%);
     border-radius: 12px;
     padding: 2rem 2.4rem 1.6rem;
-    margin-bottom: 1.8rem;
+    margin-bottom: 1.2rem;
     color: #fff;
     position: relative;
     overflow: hidden;
@@ -77,7 +86,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
     letter-spacing: .02em;
 }
 
-/* Source badge */
+/* Source badges */
 .badge {
     display: inline-block;
     padding: .2rem .6rem;
@@ -92,7 +101,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 .badge-map  { background: #e8eef8; color: #2d4d9a; }
 .badge-prod { background: #fef3e2; color: #9a6a00; }
 
-/* Download btn override */
+/* Download buttons */
 div[data-testid="stDownloadButton"] > button {
     background: #003d6b;
     color: #fff;
@@ -114,7 +123,6 @@ div[data-testid="stDownloadButton"] > button:hover { background: #0080c8; }
 
 @st.cache_data(show_spinner=False)
 def load_platform_metadata() -> pd.DataFrame:
-    """Download platform metadata from EMODnet ERDDAP."""
     fields = [
         "PLATFORMCODE", "call_name", "id", "wmo",
         "latitude", "longitude", "datafeaturetype",
@@ -132,13 +140,11 @@ def load_platform_metadata() -> pd.DataFrame:
     ]
     base = "https://data-erddap.emodnet-physics.eu/erddap/tabledap/EP_PLATFORMS_METADATA_V2.csv?"
     url = base + "%2C".join(fields)
-    df = pd.read_csv(url, skiprows=[1])
-    return df
+    return pd.read_csv(url, skiprows=[1])
 
 
 @st.cache_data(show_spinner=False)
 def load_matomo_stats(token: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """Download page-URL stats from Matomo/Piwik."""
     url = (
         "https://piwik.vliz.be/index.php?module=API&format=TSV"
         "&idSite=25&period=range"
@@ -155,18 +161,15 @@ def load_matomo_stats(token: str, start_date: str, end_date: str) -> pd.DataFram
         "Total time spent by visitors (in seconds)",
         "nb_hits_with_time_network",
     ]
-    existing = [c for c in cols if c in df.columns]
-    return df[existing]
+    return df[[c for c in cols if c in df.columns]]
 
 
 def classify_rows(df: pd.DataFrame):
-    """Split Matomo rows into ERDDAP / MAP / PRODUCT sub-frames."""
     erddap_df   = df[df["Label"].str.contains("erddap", case=False, na=False)].copy()
     platform_df = df[df["Label"].str.contains(
         "platformid=|platformcode=|platformpage|home", case=False, na=False
     )].copy()
     prod_df     = df[df["Label"].str.contains("EP_MAP", case=False, na=False)].copy()
-
     erddap_df["category"]   = "ERDDAP"
     platform_df["category"] = "MAP"
     prod_df["category"]     = "PRODUCT"
@@ -190,38 +193,41 @@ def kpi_card(label: str, value, sub: str = "") -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# SIDEBAR – CONFIGURATION
-# ─────────────────────────────────────────────────────────────
-with st.sidebar:
-    
-    # Default: last complete calendar month
-    today = date.today()
-    first_last = (today.replace(day=1) - relativedelta(months=1))
-    last_last  = today.replace(day=1) - relativedelta(days=1)
-
-    col_a, col_b = st.columns(2)
-    start_date = col_a.date_input("Start date", value=first_last)
-    end_date   = col_b.date_input("End date",   value=last_last)
-
-    load_btn = st.button("🔄 Load / Refresh data", use_container_width=True)
-
-    st.markdown("---")
-    st.caption("Data sources: EMODnet ERDDAP · Matomo/Piwik @ VLIZ")
-
-
-# ─────────────────────────────────────────────────────────────
 # HEADER
 # ─────────────────────────────────────────────────────────────
-st.markdown(f"""
+st.markdown("""
 <div class="dash-header">
     <h1>🌊 EMODnet Physics — Stats Dashboard</h1>
-    <p>Web interaction analytics · {start_date.strftime('%d %b %Y')} → {end_date.strftime('%d %b %Y')}</p>
+    <p>Web interaction analytics · Matomo/Piwik @ VLIZ · ERDDAP platform metadata</p>
 </div>
 """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────
-# DATA LOADING (session state)
+# DATE RANGE SELECTOR  (inline, central)
+# ─────────────────────────────────────────────────────────────
+token = st.secrets.get("MATOMO_TOKEN", "")
+
+today      = date.today()
+first_last = today.replace(day=1) - relativedelta(months=1)
+last_last  = today.replace(day=1) - relativedelta(days=1)
+
+st.markdown('<div class="section-title">📅 Date range</div>', unsafe_allow_html=True)
+
+dc1, dc2, dc3, dc4 = st.columns([2, 2, 2, 1])
+with dc1:
+    start_date = st.date_input("Start date", value=first_last)
+with dc2:
+    end_date = st.date_input("End date", value=last_last)
+with dc4:
+    st.markdown("<br>", unsafe_allow_html=True)
+    load_btn = st.button("🔄 Refresh", use_container_width=True)
+
+st.caption(f"Period: **{start_date.strftime('%d %b %Y')}** → **{end_date.strftime('%d %b %Y')}**  ·  Data sources: EMODnet ERDDAP · Matomo/Piwik @ VLIZ")
+
+
+# ─────────────────────────────────────────────────────────────
+# DATA LOADING
 # ─────────────────────────────────────────────────────────────
 if "platforms" not in st.session_state or load_btn:
     with st.spinner("Loading platform metadata from ERDDAP…"):
@@ -234,8 +240,7 @@ if "platforms" not in st.session_state or load_btn:
 if "matomo" not in st.session_state or load_btn:
     with st.spinner("Loading Matomo analytics…"):
         try:
-            raw = load_matomo_stats(token, str(start_date), str(end_date))
-            st.session_state["matomo"] = raw
+            st.session_state["matomo"] = load_matomo_stats(token, str(start_date), str(end_date))
         except Exception as e:
             st.error(f"Could not load Matomo stats: {e}")
             st.session_state["matomo"] = pd.DataFrame()
@@ -244,7 +249,7 @@ platforms: pd.DataFrame = st.session_state.get("platforms", pd.DataFrame())
 matomo:    pd.DataFrame = st.session_state.get("matomo",    pd.DataFrame())
 
 if matomo.empty:
-    st.warning("No Matomo data available. Check token / dates and reload.")
+    st.warning("No Matomo data available. Check token / dates and click Refresh.")
     st.stop()
 
 erddap_df, platform_df, prod_df = classify_rows(matomo)
@@ -300,69 +305,51 @@ st.markdown('<div class="section-title">🔍 Filter by institution & platform</d
 if platforms.empty:
     st.warning("Platform metadata unavailable — cannot filter by owner/platform.")
 else:
-    # Normalise column names
-    owner_col   = "dataownername"       if "dataownername"  in platforms.columns else None
+    owner_col   = "dataownername"        if "dataownername"        in platforms.columns else None
     country_col = "dataownercountryname" if "dataownercountryname" in platforms.columns else None
-    pcode_col   = "PLATFORMCODE"        if "PLATFORMCODE"   in platforms.columns else None
+    pcode_col   = "PLATFORMCODE"         if "PLATFORMCODE"         in platforms.columns else None
 
     filter_col1, filter_col2 = st.columns([1, 1])
 
     with filter_col1:
+        sel_owners = []
         if owner_col:
             owners = sorted(platforms[owner_col].dropna().unique().tolist())
-            sel_owners = st.multiselect(
-                "Institution (data owner)",
-                options=owners,
-                placeholder="Select one or more institutions…",
-            )
-        else:
-            sel_owners = []
+            sel_owners = st.multiselect("Institution (data owner)", options=owners,
+                                        placeholder="Select one or more institutions…")
 
     with filter_col2:
+        sel_countries = []
         if country_col:
             countries = sorted(platforms[country_col].dropna().unique().tolist())
-            sel_countries = st.multiselect(
-                "Country",
-                options=countries,
-                placeholder="Filter by country…",
-            )
-        else:
-            sel_countries = []
+            sel_countries = st.multiselect("Country", options=countries,
+                                           placeholder="Filter by country…")
 
-    # Filter platform metadata
     filtered_plat = platforms.copy()
     if sel_owners and owner_col:
         filtered_plat = filtered_plat[filtered_plat[owner_col].isin(sel_owners)]
     if sel_countries and country_col:
         filtered_plat = filtered_plat[filtered_plat[country_col].isin(sel_countries)]
 
-    # Platform code selector (driven by owner filter)
     if pcode_col:
         available_codes = sorted(filtered_plat[pcode_col].dropna().unique().tolist())
-        sel_codes = st.multiselect(
-            "Platform code(s)",
-            options=available_codes,
-            placeholder="Pick platform codes (leave empty = all filtered platforms)…",
-        )
+        sel_codes = st.multiselect("Platform code(s)", options=available_codes,
+                                   placeholder="Pick platform codes (leave empty = all filtered platforms)…")
         if sel_codes:
             filtered_plat = filtered_plat[filtered_plat[pcode_col].isin(sel_codes)]
 
     st.caption(f"Platforms matching filters: **{len(filtered_plat):,}**")
 
-    # Show platform metadata table
     display_cols = [c for c in [
         "PLATFORMCODE", "call_name", "dataownername", "dataownercountryname",
         "platformtypedescription", "datafeaturetype",
         "firstdateobservation", "lastdateobservation",
         "integrator", "dataassemblycenter",
     ] if c in filtered_plat.columns]
-
     st.dataframe(filtered_plat[display_cols], use_container_width=True, height=280)
 
-    # Match Matomo platform rows to selected platforms
     if not filtered_plat.empty and pcode_col:
         codes_lower = filtered_plat[pcode_col].dropna().str.lower().tolist()
-        # platform_df labels contain platformcode= or platformid=
         matched_matomo = platform_df[
             platform_df["Label"].str.lower().apply(
                 lambda lbl: any(c in lbl for c in codes_lower)
@@ -380,19 +367,14 @@ else:
               {kpi_card("Avg time (s)", tt_m)}
             </div>
             """, unsafe_allow_html=True)
-
-            st.dataframe(
-                matched_matomo.sort_values("Pageviews", ascending=False),
-                use_container_width=True,
-                height=260,
-            )
+            st.dataframe(matched_matomo.sort_values("Pageviews", ascending=False),
+                         use_container_width=True, height=260)
         else:
             st.info("No Matomo MAP visits found for the selected platforms in this period.")
 
-        # Merge: platform metadata + matched Matomo
+        # Merge metadata + Matomo aggregates
         combined_df = filtered_plat.copy()
-        if not matched_matomo.empty and pcode_col:
-            # aggregate per platform code from matomo
+        if not matched_matomo.empty:
             def extract_pcode(label: str) -> str:
                 label_l = label.lower()
                 for marker in ["platformcode=", "platformid="]:
@@ -409,10 +391,8 @@ else:
                 matomo_pv=("Pageviews", "sum"),
                 matomo_avg_time=("Total time spent by visitors (in seconds)", "mean"),
             ).reset_index().rename(columns={"_pcode": pcode_col})
-
             combined_df = combined_df.merge(agg, on=pcode_col, how="left")
 
-        # Store for download
         st.session_state["filtered_combined"] = combined_df
     else:
         st.session_state["filtered_combined"] = filtered_plat
@@ -424,47 +404,39 @@ else:
 st.markdown('<div class="section-title">💾 Download results</div>', unsafe_allow_html=True)
 
 today_str = datetime.today().strftime("%Y%m%d")
-
 dl_col1, dl_col2, dl_col3 = st.columns(3)
 
-# Download 1 – full Matomo export
 with dl_col1:
     st.markdown("**Full Matomo stats**")
-    csv_matomo = matomo.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇ Download full stats CSV",
-        data=csv_matomo,
+        data=matomo.to_csv(index=False).encode("utf-8"),
         file_name=f"{today_str}_matomo_emodnet_full.csv",
         mime="text/csv",
         use_container_width=True,
     )
 
-# Download 2 – summary by category
 with dl_col2:
     st.markdown("**Summary by category**")
     rows = []
     for label, df_sub in [("ERDDAP", erddap_df), ("MAP", platform_df), ("PRODUCT", prod_df)]:
         uv, pv, tt = kpi(df_sub)
         rows.append({"Category": label, "Unique Pageviews": uv, "Pageviews": pv, "Avg Time (s)": tt})
-    summary_df = pd.DataFrame(rows)
-    csv_summary = summary_df.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇ Download summary CSV",
-        data=csv_summary,
+        data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8"),
         file_name=f"{today_str}_matomo_emodnet_summary.csv",
         mime="text/csv",
         use_container_width=True,
     )
 
-# Download 3 – filtered / combined result
 with dl_col3:
     st.markdown("**Filtered platform data**")
     filtered_to_download = st.session_state.get("filtered_combined", platforms)
     if not filtered_to_download.empty:
-        csv_filtered = filtered_to_download.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="⬇ Download filtered CSV",
-            data=csv_filtered,
+            data=filtered_to_download.to_csv(index=False).encode("utf-8"),
             file_name=f"{today_str}_matomo_emodnet_filtered.csv",
             mime="text/csv",
             use_container_width=True,
@@ -473,4 +445,4 @@ with dl_col3:
         st.info("Apply filters above to enable this download.")
 
 st.markdown("---")
-st.caption("EMODnet Physics Stats Dashboard · Built with Streamlit · Data: ERDDAP + Matomo/VLIZ")
+st.caption("EMODnet Physics Stats Dashboard")
