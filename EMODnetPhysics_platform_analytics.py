@@ -193,15 +193,7 @@ def kpi_card(label: str, value, sub: str = "") -> str:
 # SIDEBAR – CONFIGURATION
 # ─────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚙️ Configuration")
-
-    token = st.text_input(
-        "Matomo token_auth",
-        value=st.secrets.get("MATOMO_TOKEN", ""),
-        type="password",
-        help="Loaded from .streamlit/secrets.toml (MATOMO_TOKEN). You can override it here.",
-    )
-
+    
     # Default: last complete calendar month
     today = date.today()
     first_last = (today.replace(day=1) - relativedelta(months=1))
